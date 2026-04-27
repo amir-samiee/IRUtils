@@ -64,13 +64,14 @@ class Reacheck:
                 break
 
     def _update_success(self, response: requests.Response):
-        console.print("[repr.str]%i" % response.status_code)
+        console.print(f"[repr.str]{response.status_code}".ljust(37), end=" ")
         self.reachable.add(response.url)
         logger.info(response)
 
     def _update_failure(self, err: BaseException):
-        console.print(f"<{type(err).__name__}>")
-        self.errors[err] = self.errors.get(err, 0) + 1
+        key = type(err).__name__
+        console.print(f"<{key}>".ljust(27), end=" ")
+        self.errors[key] = self.errors.get(key, 0) + 1
         logger.error(err)
 
     def post_get(self, result: Result):
@@ -88,7 +89,7 @@ class Reacheck:
             self._update_failure(result)
         else:
             self._update_success(result)
-        console.print(self.errors, justify="right")
+        console.print(self.errors)
         return True
 
     def pre_get(self, i: int, address: Address):
@@ -97,5 +98,7 @@ class Reacheck:
 
 
 if __name__ == "__main__":
-    checker = Reacheck(["google.com"])
+    with open(Path(__file__).parent / "domains.txt") as file:
+        domains = file.read().split()
+    checker = Reacheck(domains)
     checker.reachout()
