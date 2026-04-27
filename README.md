@@ -46,3 +46,7 @@ rich
 - Successfully reachable URLs are collected in `checker.reachable` (this is supposed to be used in domains' uniqueness handling, later)
 - Results are immediately logged to `.log` file (for restorability, in case of any interruptions)
 - Status codes and error types displayed in console
+
+### Acknowledgments
+
+Special thanks to [atakanaltok](https://github.com/atakanaltok)'s repository, [awesome-useful-websites](https://github.com/atakanaltok/awesome-useful-websites), for providing useful web resources and tools. A list of these awesome websites (possibly with exclusions/additions) has been provided in [domains.txt](domains.txt) so you can test the functionality of the script.
