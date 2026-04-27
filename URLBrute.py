@@ -1,4 +1,4 @@
-import requests, warnings, logging
+import requests, warnings, logging, sys
 from rich.console import Console
 from typing import TypeAlias
 from pathlib import Path
@@ -81,6 +81,7 @@ class Reacheck:
         # NOTE: we're not using the console
         # here as it doesn't respond to "\b"
         print("\b" * 3, end="")
+
         if isinstance(result, KeyboardInterrupt):
             confirm = console.input("wanna continue?: ")
             if confirm.lower() in "nq":
@@ -98,7 +99,8 @@ class Reacheck:
 
 
 if __name__ == "__main__":
-    with open(Path(__file__).parent / "domains.txt") as file:
+    domainfile = sys.argv[-1] if len(sys.argv) > 1 else "domains.txt"
+    with open(Path(__file__).parent / domainfile) as file:
         domains = file.read().split()
     checker = Reacheck(domains)
     checker.reachout()
