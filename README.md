@@ -5,6 +5,7 @@ This repo is a tracked log of the scripts I write for myself, due to regional ne
 ## URLBrute
 
 A Python utility for batch checking the reachability of URLs.
+![URLBrute screenshot](images/screenshot.png)
 
 ### Overview
 

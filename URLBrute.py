@@ -1,13 +1,15 @@
-import requests, warnings, logging, sys
+from rich_argparse_plus import RichHelpFormatterPlus
+from typing import Iterable, TypeAlias
+from argparse import ArgumentParser
+import requests, warnings, logging
 from rich.console import Console
-from typing import TypeAlias
 from pathlib import Path
 
 console = Console()
 logger = logging.getLogger()
-logfile = Path(__file__).parent / ".log"
-logging.basicConfig(filename=logfile, level=0)
+FILEDIR = Path(__file__).parent
 Result: TypeAlias = requests.Response | BaseException
+logging.basicConfig(filename=FILEDIR / ".log", level=0)
 
 
 class Address(str):
@@ -97,10 +99,33 @@ class Reacheck:
         console.print(self.pg_template.format(i, address.url), end="")
         # TODO: progress bar
 
+    def _update_file(self, filename: str, content: Iterable, remove=False):
+        path = Path(filename)
+        path.touch()
+        with path.open("r+") as file:
+            old = file.read().splitlines()
+            a, b = map(set, (old, content))
+            new = a - b if remove else a | b
+            file.seek(0)
+            file.write("\n".join(new))
+            file.truncate()
+
+    def save_results(self, output_file: str, tested_file=None):
+        self._update_file(output_file, self.reachable)
+        if tested_file:
+            self._update_file(tested_file, self.reachable, True)
+
+
+style_modify = {"argparse.metavar": "yellow", "argparse.prog": "bold green"}
+RichHelpFormatterPlus.styles.update(style_modify)
+parser = ArgumentParser(allow_abbrev=True, formatter_class=RichHelpFormatterPlus)
+parser.add_argument("--input", default=FILEDIR / "domains.txt")
+parser.add_argument("--output", default=FILEDIR / "results.txt")
 
 if __name__ == "__main__":
-    domainfile = sys.argv[-1] if len(sys.argv) > 1 else "domains.txt"
-    with open(Path(__file__).parent / domainfile) as file:
-        domains = file.read().split()
+    args = parser.parse_args()
+    with open(args.input) as file:
+        domains = file.read().splitlines()
     checker = Reacheck(domains)
     checker.reachout()
+    checker.save_results(args.output, args.input)
