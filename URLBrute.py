@@ -1,15 +1,22 @@
 from rich_argparse_plus import RichHelpFormatterPlus
+from rich.progress import Progress, BarColumn
 from typing import Iterable, TypeAlias
 from argparse import ArgumentParser
 import requests, warnings, logging
-from rich.console import Console
+from rich import get_console
 from pathlib import Path
 
-console = Console()
+console = get_console()
 logger = logging.getLogger()
 FILEDIR = Path(__file__).parent
 Result: TypeAlias = requests.Response | BaseException
 logging.basicConfig(filename=FILEDIR / ".log", level=0)
+
+parser = ArgumentParser(allow_abbrev=True, formatter_class=RichHelpFormatterPlus)
+style_modify = {"argparse.metavar": "yellow", "argparse.prog": "bold green"}
+parser.add_argument("--output", default=FILEDIR / "results.txt")
+parser.add_argument("--input", default=FILEDIR / "domains.txt")
+RichHelpFormatterPlus.styles.update(style_modify)
 
 
 class Address(str):
@@ -46,60 +53,80 @@ class Address(str):
 
 
 class Reacheck:
-    def __init__(self, addresses: list[str]):
+    def __init__(self, addresses: list[str], timeout=5.0):
         self.addresses = list(map(Address, addresses))
-        self.timeout = 5
+        self.timeout = timeout
         self.errors = {}
         self.reachable = set()
 
-        maxurllen = max(map(len, self.addresses))
-        counterlen = len(str(len(addresses)))
-        raw = "{:>%i}/%i: {:<%i}  ..."
-        self.pg_template = raw % (counterlen, len(addresses), maxurllen)
-
     def reachout(self):
-        for i, addr in enumerate(self.addresses, 1):
-            self.pre_get(i, addr)
-            result = addr.get(timeout=self.timeout)
-            do_continue = self.post_get(result)
-            if do_continue is False:
-                break
+        self._init_progress()
+        with self.progress:
+            for i, addr in enumerate(self.addresses, 1):
+                self.pre_get(i, addr)
+                result = addr.get(timeout=self.timeout)
+                do_continue = self.post_get(addr, result)
+                if do_continue is False:
+                    break
 
-    def _update_success(self, response: requests.Response):
-        console.print(f"[repr.str]{response.status_code}".ljust(37), end=" ")
-        self.reachable.add(response.url)
-        logger.info(response)
+    def _init_progress(self):
+        timeformat = console._log_render.time_format
+        console._log_render.omit_repeated_times = False
+        console._log_render.show_path = False
+        dt = console.get_datetime()
+        timesample = timeformat(dt) if callable(timeformat) else dt.strftime(timeformat)
+        margin = len(timesample)
+        self._r_url = max(map(len, self.addresses))
+        self._r_ext = 18  # extra space for markup, use [/] + spaces to fill
+        fraction = "[yellow]({task.completed}/{task.total})"
+        percentage = "[green]{task.percentage:>%i.3f}%%" % (margin - 1)
+        description = "{task.description:<%i}" % (self._r_url + self._r_ext)
+        self.progress = Progress(
+            percentage,
+            description,
+            BarColumn(89),
+            fraction,
+            console=console,
+            auto_refresh=False,
+        )
+        self.task = self.progress.add_task("Progress:", total=len(self.addresses))
 
-    def _update_failure(self, err: BaseException):
-        key = type(err).__name__
-        console.print(f"<{key}>".ljust(27), end=" ")
-        self.errors[key] = self.errors.get(key, 0) + 1
-        logger.error(err)
+    def pre_get(self, i: int, address: Address):
+        desc = "[repr.url]" + address.url + "[reset]"
+        self.progress.update(self.task, description=desc, completed=i, refresh=True)
 
-    def post_get(self, result: Result):
+    def post_get(self, address: Address, result: Result):
         """handles the result, the corresponding output,
         and returns whether the user wants to continue"""
 
-        # NOTE: we're not using the console
-        # here as it doesn't respond to "\b"
-        print("\b" * 3, end="")
-
         if isinstance(result, KeyboardInterrupt):
-            confirm = console.input("wanna continue?: ")
-            if confirm.lower() in "nq":
-                return False
+            self.progress.stop()
+            do_quit = console.input("do you REALLY wanna quit?: ")
+            if do_quit in "nN":
+                self.progress.start()  # (re-start)
+                return True
+            console.print("ok sure. just one last thing:...")
+            do_save = console.input("do you wanna update the results so far?: ")
+            if do_save not in "nN":
+                # we're not going to mess with the actual input/output files here
+                # TODO: resolve the issue above, preferably in Self.save_results itself
+                self.save_results(parser.get_default("output"))
+                console.print("done")
+            return False
         elif isinstance(result, BaseException):
-            self._update_failure(result)
+            key = type(result).__name__
+            self.errors[key] = self.errors.get(key, 0) + 1
+            logger.error(result)
+            out = f"<{key}>"
         else:
-            self._update_success(result)
-        console.print(self.errors)
+            self.reachable.add(result.url)
+            logger.info(result)
+            out = result.status_code
+
+        console.log(f"{address.url:<{self._r_url}}  {out:<27} {self.errors}")
         return True
 
-    def pre_get(self, i: int, address: Address):
-        console.print(self.pg_template.format(i, address.url), end="")
-        # TODO: progress bar
-
-    def _update_file(self, filename: str, content: Iterable, remove=False):
+    def _update_file(self, filename: str | Path, content: Iterable, remove=False):
         path = Path(filename)
         path.touch()
         with path.open("r+") as file:
@@ -115,12 +142,6 @@ class Reacheck:
         if tested_file:
             self._update_file(tested_file, self.reachable, True)
 
-
-style_modify = {"argparse.metavar": "yellow", "argparse.prog": "bold green"}
-RichHelpFormatterPlus.styles.update(style_modify)
-parser = ArgumentParser(allow_abbrev=True, formatter_class=RichHelpFormatterPlus)
-parser.add_argument("--input", default=FILEDIR / "domains.txt")
-parser.add_argument("--output", default=FILEDIR / "results.txt")
 
 if __name__ == "__main__":
     args = parser.parse_args()

@@ -6,6 +6,9 @@ This repo is a tracked log of the scripts I write for myself, due to regional ne
 
 A Python utility for batch checking the reachability of URLs.
 ![URLBrute screenshot](images/screenshot.png)
+***About the image:** You've definitely noticed that not a single request has even been reached at all, let alone repsponding (un)successfully. This is not an intentional modified/made-up result and has nothing to do with this repo, but displays how we're struggling to survive and get our genuinely basic human rights back, only because of the region we're born in, or somehow got stuckked afterwards. See [this quick preview](https://github.com/arash-aryapour/iran-internet-shutdown-2025-analysis#-quick-preview).*
+
+*To see a preview of some successful responses, see [this image from an older version](<images/screenshot (old).png>)*
 
 ### Overview
 
@@ -35,16 +38,9 @@ github.com
 - Request timeout (5 seconds default)
 - Logging of all requests and errors
 
-### Requirements
-
-```
-requests
-rich
-```
-
 ### Output
 
-- Successfully reachable URLs are collected in `checker.reachable` (this is supposed to be used in domains' uniqueness handling, later)
+- Successfully reachable URLs are collected in `checker.reachable` and finally (and/or after a keyboard interrupt) to a pre-specified file. (if not set, falls back to a default path)
 - Results are immediately logged to `.log` file (for restorability, in case of any interruptions)
 - Status codes and error types displayed in console
 
