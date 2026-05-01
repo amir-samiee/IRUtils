@@ -25,34 +25,31 @@ RichHelpFormatterPlus.styles.update(style_modify)
 class Address(str):
     pro = "https://"
 
-    def __init__(self, value=""):
+    def __new__(cls, value=""):
         if "." not in value:
-            msg = "%s doesn't actually seem like a real web address to me" % repr(self)
+            msg = "%s doesn't actually seem like a real web address to me" % repr(value)
             warnings.warn(msg)
-        self._url = self if self.was_url else self.pro + self
-        super().__init__()
+        domain = value[len(cls.pro) :] if cls.is_url(value) else value
+        return super().__new__(cls, domain[: -1 if domain.endswith("/") else None])
 
     @property
     def domain(self):
-        return self.url[len(self.pro) :]
+        return self
 
     @property
     def url(self):
-        return self._url
+        return self.pro + self
 
-    def get(self, *args, **kwargs) -> Result:
+    def get(self, *args, **kwargs):
         try:
             response = requests.get(self.url, *args, **kwargs)
         except BaseException as err:
             return err
         return response
 
-    @property
-    def was_url(self):
-        return self.startswith(self.pro)
-
-    def __len__(self):
-        return len(self.url)
+    @classmethod
+    def is_url(cls, value: str):
+        return value.startswith(cls.pro)
 
 
 class Reacheck:
@@ -66,7 +63,7 @@ class Reacheck:
     def reachout(self):
         self._init_progress()
         with self.progress:
-            for i, addr in enumerate(self.addresses, 1):
+            for i, addr in enumerate(list(self.addresses), 1):
                 self.pre_get(i, addr)
                 result = addr.get(timeout=self.timeout)
                 do_continue = self.post_get(addr, result)
@@ -106,19 +103,19 @@ class Reacheck:
         if isinstance(result, KeyboardInterrupt):
             self.progress.stop()
             do_quit = console.input("[yellow]you [dark_orange]REALLY[/] wanna quit?: ")
-            if do_quit in "nN":  # default: user DOES want to quit
+            if do_quit and do_quit in "nN":
                 self.progress.start()  # (continue)
                 return True
             if ask_to_save:
                 console.print("ok sure. [bar.pulse]just one last thing:...")
                 do_save = console.input("[cyan]wanna update the results so far?: ")
-                if do_save not in "nN":  # default: user DOES wanna update results
+                if not do_save or do_save not in "nN":
                     iofiles = parser.parse_known_args()[0]
                     self.save_results(iofiles.input, iofiles.output)
                     console.print("[green]done")
             return False
         elif not isinstance(result, BaseException):
-            self.reached.fromkeys([result.url])
+            self.reached[result.url] = None  # add to the set-like object
             self.addresses.pop(Address(result.url))
             logger.info(result)
             out_main = result.status_code
@@ -135,31 +132,26 @@ class Reacheck:
             f"[dark_orange]{key}[reset]:[bar.pulse]{value}[/]"
             for key, value in self.errstats.items()
         )
-        reached = f"[inspect.def]reached[reset]:[json.bool_true]{len(self.reached)}[/]"
+        reached = f"[cyan]reached[reset]:[repr.str]{len(self.reached)}[/]"
         console.log(f"{address.url:<{self._r_url}}  {out_main:<27} {reached} {errs}")
         return True
 
     def _update_file(self, filename: str | Path, content: Iterable, remove=False):
         path = Path(filename)
         path.touch()
-        with path.open("r+") as file:
-            old = file.read().splitlines()
-            a, b = map(set, (old, content))
-            new = a - b if remove else a | b
-            file.seek(0)
-            file.write("\n".join(new))
-            file.truncate()
+        with path.open("w" if remove else "a") as file:
+            file.write("\n".join(content))
 
     def save_results(self, output_file: str, tested_file=None):
         self._update_file(output_file, self.reached)
         if tested_file:
-            self._update_file(tested_file, self.addresses)
+            self._update_file(tested_file, self.addresses, True)
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
     with open(args.input) as file:
         domains = file.read().splitlines()
-    checker = Reacheck(domains, 0.1)
+    checker = Reacheck(domains)
     checker.reachout()
     checker.save_results(args.output, args.input)
