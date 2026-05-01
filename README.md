@@ -8,7 +8,7 @@ A Python utility for batch checking the reachability of URLs.
 ![URLBrute screenshot](images/screenshot.png)
 ***About the image:** You've definitely noticed that not a single request has even been reached at all, let alone repsponding (un)successfully. This is not an intentional modified/made-up result and has nothing to do with this repo, but displays how we're struggling to survive and get our genuinely basic human rights back, only because of the region we're born in, or somehow got stuckked afterwards. See [this quick preview](https://github.com/arash-aryapour/iran-internet-shutdown-2025-analysis#-quick-preview).*
 
-*To see a preview of some successful responses, see [this image from an older version](<images/screenshot (old).png>)*
+*To see a preview of some successful responses, see [this image from an older version](<images/screenshot (old).png>).*
 
 ### Overview
 

@@ -1,7 +1,9 @@
+from requests.exceptions import ReadTimeout, ConnectionError, ConnectTimeout
 from rich_argparse_plus import RichHelpFormatterPlus
 from rich.progress import Progress, BarColumn
 from typing import Iterable, TypeAlias
 from argparse import ArgumentParser
+from collections import OrderedDict
 import requests, warnings, logging
 from rich import get_console
 from pathlib import Path
@@ -11,7 +13,8 @@ logger = logging.getLogger()
 FILEDIR = Path(__file__).parent
 Result: TypeAlias = requests.Response | BaseException
 logging.basicConfig(filename=FILEDIR / ".log", level=0)
-
+expected_exceptions = ConnectionError, ConnectTimeout, ReadTimeout
+abbv = {k.__name__: v for k, v in zip(expected_exceptions, ("C.E.", "C.To.", "R.To."))}
 parser = ArgumentParser(allow_abbrev=True, formatter_class=RichHelpFormatterPlus)
 style_modify = {"argparse.metavar": "yellow", "argparse.prog": "bold green"}
 parser.add_argument("--output", default=FILEDIR / "results.txt")
@@ -54,10 +57,11 @@ class Address(str):
 
 class Reacheck:
     def __init__(self, addresses: list[str], timeout=5.0):
-        self.addresses = list(map(Address, addresses))
+        # OrderedDicts used as ordered-set-like data structures
+        self.addresses = OrderedDict.fromkeys(map(Address, addresses))
+        self.reached = OrderedDict()
         self.timeout = timeout
-        self.errors = {}
-        self.reachable = set()
+        self.errstats = {}
 
     def reachout(self):
         self._init_progress()
@@ -84,7 +88,7 @@ class Reacheck:
         self.progress = Progress(
             percentage,
             description,
-            BarColumn(89),
+            BarColumn(50),
             fraction,
             console=console,
             auto_refresh=False,
@@ -95,35 +99,44 @@ class Reacheck:
         desc = "[repr.url]" + address.url + "[reset]"
         self.progress.update(self.task, description=desc, completed=i, refresh=True)
 
-    def post_get(self, address: Address, result: Result):
+    def post_get(self, address: Address, result: Result, ask_to_save=True):
         """handles the result, the corresponding output,
         and returns whether the user wants to continue"""
 
         if isinstance(result, KeyboardInterrupt):
             self.progress.stop()
-            do_quit = console.input("do you REALLY wanna quit?: ")
-            if do_quit in "nN":
-                self.progress.start()  # (re-start)
+            do_quit = console.input("[yellow]you [dark_orange]REALLY[/] wanna quit?: ")
+            if do_quit in "nN":  # default: user DOES want to quit
+                self.progress.start()  # (continue)
                 return True
-            console.print("ok sure. just one last thing:...")
-            do_save = console.input("do you wanna update the results so far?: ")
-            if do_save not in "nN":
-                # we're not going to mess with the actual input/output files here
-                # TODO: resolve the issue above, preferably in Self.save_results itself
-                self.save_results(parser.get_default("output"))
-                console.print("done")
+            if ask_to_save:
+                console.print("ok sure. [bar.pulse]just one last thing:...")
+                do_save = console.input("[cyan]wanna update the results so far?: ")
+                if do_save not in "nN":  # default: user DOES wanna update results
+                    iofiles = parser.parse_known_args()[0]
+                    self.save_results(iofiles.input, iofiles.output)
+                    console.print("[green]done")
             return False
-        elif isinstance(result, BaseException):
-            key = type(result).__name__
-            self.errors[key] = self.errors.get(key, 0) + 1
-            logger.error(result)
-            out = f"<{key}>"
-        else:
-            self.reachable.add(result.url)
+        elif not isinstance(result, BaseException):
+            self.reached.fromkeys([result.url])
+            self.addresses.pop(Address(result.url))
             logger.info(result)
-            out = result.status_code
-
-        console.log(f"{address.url:<{self._r_url}}  {out:<27} {self.errors}")
+            out_main = result.status_code
+        else:
+            name = type(result).__name__
+            if isinstance(result, expected_exceptions):
+                key = abbv[name]
+            else:
+                key = "etc."
+            self.errstats[key] = self.errstats.get(key, 0) + 1
+            logger.error(result)
+            out_main = f"<{name}>"
+        errs = " ".join(
+            f"[dark_orange]{key}[reset]:[bar.pulse]{value}[/]"
+            for key, value in self.errstats.items()
+        )
+        reached = f"[inspect.def]reached[reset]:[json.bool_true]{len(self.reached)}[/]"
+        console.log(f"{address.url:<{self._r_url}}  {out_main:<27} {reached} {errs}")
         return True
 
     def _update_file(self, filename: str | Path, content: Iterable, remove=False):
@@ -138,15 +151,15 @@ class Reacheck:
             file.truncate()
 
     def save_results(self, output_file: str, tested_file=None):
-        self._update_file(output_file, self.reachable)
+        self._update_file(output_file, self.reached)
         if tested_file:
-            self._update_file(tested_file, self.reachable, True)
+            self._update_file(tested_file, self.addresses)
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
     with open(args.input) as file:
         domains = file.read().splitlines()
-    checker = Reacheck(domains)
+    checker = Reacheck(domains, 0.1)
     checker.reachout()
     checker.save_results(args.output, args.input)
