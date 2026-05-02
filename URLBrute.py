@@ -4,6 +4,7 @@ from rich.progress import Progress, BarColumn
 from typing import Iterable, TypeAlias
 from argparse import ArgumentParser
 from collections import OrderedDict
+from urllib3.util import parse_url
 import requests, warnings, logging
 from rich import get_console
 from pathlib import Path
@@ -29,8 +30,7 @@ class Address(str):
         if "." not in value:
             msg = "%s doesn't actually seem like a real web address to me" % repr(value)
             warnings.warn(msg)
-        domain = value[len(cls.pro) :] if cls.is_url(value) else value
-        return super().__new__(cls, domain[: -1 if domain.endswith("/") else None])
+        return super().__new__(cls, parse_url(value).host)
 
     @property
     def domain(self):
@@ -46,10 +46,6 @@ class Address(str):
         except BaseException as err:
             return err
         return response
-
-    @classmethod
-    def is_url(cls, value: str):
-        return value.startswith(cls.pro)
 
 
 class Reacheck:
@@ -77,7 +73,7 @@ class Reacheck:
         dt = console.get_datetime()
         timesample = timeformat(dt) if callable(timeformat) else dt.strftime(timeformat)
         margin = len(timesample)
-        self._r_url = max(map(len, self.addresses))
+        self._r_url = max(len(addr.url) for addr in self.addresses)
         self._r_ext = 18  # extra space for markup, use [/] + spaces to fill
         fraction = "[yellow]({task.completed}/{task.total})"
         percentage = "[green]{task.percentage:>%i.3f}%%" % (margin - 1)
@@ -85,7 +81,7 @@ class Reacheck:
         self.progress = Progress(
             percentage,
             description,
-            BarColumn(50),
+            BarColumn(None),
             fraction,
             console=console,
             auto_refresh=False,
@@ -121,10 +117,7 @@ class Reacheck:
             out_main = result.status_code
         else:
             name = type(result).__name__
-            if isinstance(result, expected_exceptions):
-                key = abbv[name]
-            else:
-                key = "etc."
+            key = abbv.get(name, "etc.")
             self.errstats[key] = self.errstats.get(key, 0) + 1
             logger.error(result)
             out_main = f"<{name}>"
@@ -136,10 +129,10 @@ class Reacheck:
         console.log(f"{address.url:<{self._r_url}}  {out_main:<27} {reached} {errs}")
         return True
 
-    def _update_file(self, filename: str | Path, content: Iterable, remove=False):
+    def _update_file(self, filename: str | Path, content: Iterable, overwrite=False):
         path = Path(filename)
         path.touch()
-        with path.open("w" if remove else "a") as file:
+        with path.open("w" if overwrite else "a") as file:
             file.write("\n".join(content))
 
     def save_results(self, output_file: str, tested_file=None):
@@ -153,5 +146,7 @@ if __name__ == "__main__":
     with open(args.input) as file:
         domains = file.read().splitlines()
     checker = Reacheck(domains)
-    checker.reachout()
-    checker.save_results(args.output, args.input)
+    try:
+        checker.reachout()
+    finally:
+        checker.save_results(args.output, args.input)
