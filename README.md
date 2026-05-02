@@ -6,7 +6,7 @@ This repo is a tracked log of the scripts I write for myself, due to regional ne
 
 A Python utility for batch checking the reachability of URLs.
 ![URLBrute screenshot](images/screenshot.png)
-***About the image:** You've definitely noticed that not a single request has even been reached at all, let alone repsponding (un)successfully. This is not an intentional modified/made-up result and has nothing to do with this repo, but displays how we're struggling to survive and get our genuinely basic human rights back, only because of the region we're born in, or somehow got stuckked afterwards. See [this quick preview](https://github.com/arash-aryapour/iran-internet-shutdown-2025-analysis#-quick-preview).*
+***About the image:** You've definitely noticed the success rate (2 in more than 1,500). This is not an intentional modified/made-up result and has nothing to do with this repo, but displays how we're struggling to survive and get our genuinely basic human rights back, these days; only because of the region we're born, or somehow got stuckked inside afterwards. See [this quick preview](https://github.com/arash-aryapour/iran-internet-shutdown-2025-analysis#-quick-preview).*
 
 *To see a preview of some successful responses, see [this image from an older version](<images/screenshot (old).png>).*
 
